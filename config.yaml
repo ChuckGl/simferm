@@ -1,0 +1,7 @@
+ip: '192.168.254.62'  # IP of the Tilt-Sim device
+color: 'yellow*hd'  # Tilt name from Tilt-Sim you will use for simulation
+starttemp: 101.3  # Starting temperature (°F
+finaltemp: 55.3  # Final target temperature (°F
+time: 60  # Total simulation time in minutes
+og: 1.0615  # Original Gravity (OG)
+fg: 1.015  # Final Gravity (FG)
