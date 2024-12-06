@@ -3,9 +3,8 @@
 
 Simferm is a Python script designed to simulate the fermentation process by generating
 temperature and gravity data. It is specifically designed to work with
-[Tilt-Sim](https://github.com/spouliot/tilt-sim), a tool that simulates the output of a
-Tilt Hydrometer. Simferm can be used to test and develop brewing software without the need
-for a real Tilt Hydrometer.
+[Tilt-Sim](https://github.com/spouliot/tilt-sim), a tool that can simulate multiple (16) Tilt / Tilt Pro devices.
+Simferm can be used to test and develop brewing software.
 
 ## Features
 
