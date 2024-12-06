@@ -88,13 +88,39 @@ def determine_direction(start_temp, end_temp):
     """Determines the direction of the temperature change."""
     return "down" if start_temp > end_temp else "up"
 
+def daemonize():
+    """Daemonizes the current process, allowing it to run in the background."""
+    try:
+        pid = os.fork()
+        if pid > 0:
+            # Parent process, exit so that the child process runs in the background
+            print(f"Running in background with PID: {pid}")
+            with open(os.path.join(SCRIPT_DIR, 'simferm.pid'), 'w') as pid_file:
+                pid_file.write(f"{pid}\n")
+            sys.exit(0)
+    except OSError as e:
+        print(f"Fork failed: {e}", file=sys.stderr)
+        sys.exit(1)
+
+def parse_testtime(testtime_str):
+    """Parses the --testtime argument and returns the total duration in seconds."""
+    if testtime_str == "nonstop":
+        return None  # Indefinite test time
+
+    if testtime_str.endswith("h"):  # Hours
+        return int(testtime_str[:-1]) * 3600
+    elif testtime_str.endswith("d"):  # Days
+        return int(testtime_str[:-1]) * 86400
+    else:
+        raise ValueError("Invalid format for --testtime. Use '4h' for hours or '2d' for days.")
+
 # ========================
 # Main Function
 # ========================
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Simulate a fermentation using Tilt-Sim (https://github.com/spouliot/tilt-sim)",
+        description="Simulate a fermentation using Tilt-Sim (https://github.com/spouliot/tilt-sim). Simferm logs to $HOME/simferm.log",
         formatter_class=lambda prog: argparse.HelpFormatter(prog, max_help_position=30)
     )
 
@@ -107,8 +133,23 @@ def main():
     parser.add_argument('--og', type=float, help='Original Gravity (OG)')
     parser.add_argument('--fg', type=float, help='Final Gravity (FG)')
     parser.add_argument('--time', type=int, help='Total simulation time (minutes)')
+    parser.add_argument('--background', action='store_true', help='Run the script in the background.')
+    parser.add_argument('--testtime', type=str, help='Total test time (e.g., 4h for hours, 2d for days, or nonstop for infinite)')
 
     args = parser.parse_args()
+
+    # If the --background flag is set, daemonize the process
+    # If the --background flag is set, daemonize the process
+    if args.background:
+        if os.getenv("INVOCATION_ID"):  # Check if running under systemd
+            print("Systemd detected: ignoring --background flag")
+        else:
+            daemonize()
+
+    # Calculate total test time in seconds (None means run indefinitely)
+    total_test_duration = None
+    if args.testtime:
+        total_test_duration = parse_testtime(args.testtime)
 
     # Load configuration from file if provided
     if args.config:
@@ -121,76 +162,74 @@ def main():
         if value is not None:
             DEFAULTS[key] = value
 
-    # Convert temperatures to milli-degrees Celsius
-    start_temp = int((DEFAULTS['starttemp'] - 32) * 5/9 * 1000)
-    end_temp = int((DEFAULTS['finaltemp'] - 32) * 5/9 * 1000)
-
-    # Determine the direction of temperature change
-    direction = determine_direction(start_temp, end_temp)
-
-    total_temp_change = end_temp - start_temp
-    number_of_changes = DEFAULTS['time'] * 60  # Total number of changes (1 per second)
-    temp_change_per_interval = total_temp_change / number_of_changes
-
-    gravity = max(DEFAULTS['og'], DEFAULTS['fg'])  # Start with the higher value (OG)
-    final_gravity = min(DEFAULTS['og'], DEFAULTS['fg'])  # Target the lower value (FG)
-
     start_time = time.time()
 
-    # Convert initial temperature to Fahrenheit for logging
-    current_temp_fahrenheit = start_temp / 1000 * 9/5 + 32
-    start_temp_fahrenheit = DEFAULTS['starttemp']
-
-    # CLI output at start of simulation
-    print("Simulated fermentation started. Monitor log file for progress.")
-
-    # Open log file, in same dir as simferm.py, in write mode to overwrite existing content
-    log_file_path = os.path.join(SCRIPT_DIR, 'simferm.log')
-    with open(log_file_path, 'w') as log_file:
-        # Start of simulation run
-        timestamp = datetime.now()
-        update_log(log_file, timestamp, script_version, current_temp_fahrenheit, DEFAULTS['color'], gravity, start_temp_fahrenheit, DEFAULTS['og'], is_start=True)
-
-        # Run the simulation loop
-        for i in range(number_of_changes):
-            if (direction == "up" and start_temp >= end_temp) or (direction == "down" and start_temp <= end_temp):
-                break  # Exit loop if target temperature is reached
-            
-            # Adjust the temperature based on the direction
-            if direction == "up":
-                start_temp += abs(temp_change_per_interval)
-            else:  # direction == "down"
-                start_temp -= abs(temp_change_per_interval)
-
-            current_temp_fahrenheit = start_temp / 1000 * 9/5 + 32
-
-            # Update log file with current progress
+    while True:
+        # Initialize temperatures and other variables at the start of each run
+        start_temp = int((DEFAULTS['starttemp'] - 32) * 5/9 * 1000)
+        end_temp = int((DEFAULTS['finaltemp'] - 32) * 5/9 * 1000)
+        direction = determine_direction(start_temp, end_temp)
+        total_temp_change = end_temp - start_temp
+        number_of_changes = DEFAULTS['time'] * 60
+        temp_change_per_interval = total_temp_change / number_of_changes
+        gravity = max(DEFAULTS['og'], DEFAULTS['fg'])
+        final_gravity = min(DEFAULTS['og'], DEFAULTS['fg'])
+        current_temp_fahrenheit = start_temp / 1000 * 9/5 + 32
+        start_temp_fahrenheit = DEFAULTS['starttemp']
+        
+        # Log start of the simulation
+        print("Simulated fermentation started. Monitor log file for progress.")
+        log_file_path = os.path.join(SCRIPT_DIR, 'simferm.log')
+        with open(log_file_path, 'w+') as log_file:
             timestamp = datetime.now()
-            update_log(log_file, timestamp, script_version, current_temp_fahrenheit, DEFAULTS['color'], gravity, start_temp_fahrenheit, DEFAULTS['og'])
+            update_log(log_file, timestamp, script_version, current_temp_fahrenheit, DEFAULTS['color'], gravity, start_temp_fahrenheit, DEFAULTS['og'], is_start=True)
 
-            # Execute curl command with updated values
+            # Simulation loop for temperature and gravity change
+            for i in range(number_of_changes):
+                # Skip target temperature check for `nonstop`
+                if total_test_duration is not None:
+                    if (direction == "up" and start_temp >= end_temp) or (direction == "down" and start_temp <= end_temp):
+                        break
+                
+                # Adjust temperature and gravity
+                if direction == "up":
+                    start_temp += abs(temp_change_per_interval)
+                else:
+                    start_temp -= abs(temp_change_per_interval)
+                current_temp_fahrenheit = start_temp / 1000 * 9/5 + 32
+                timestamp = datetime.now()
+                update_log(log_file, timestamp, script_version, current_temp_fahrenheit, DEFAULTS['color'], gravity, start_temp_fahrenheit, DEFAULTS['og'])
+                execute_curl_command(DEFAULTS['ip'], DEFAULTS['color'], current_temp_fahrenheit, gravity)
+
+                # Gravity adjustment
+                gravity_change = (DEFAULTS['og'] - final_gravity) / number_of_changes
+                gravity = max(final_gravity, gravity - gravity_change)
+                
+                # Maintain accurate time intervals
+                elapsed_time = time.time() - start_time
+                sleep_time = (i + 1) - elapsed_time
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+
+            # Final update and log for the simulation
             execute_curl_command(DEFAULTS['ip'], DEFAULTS['color'], current_temp_fahrenheit, gravity)
+            update_log(log_file, timestamp, script_version, current_temp_fahrenheit, DEFAULTS['color'], gravity, start_temp_fahrenheit, DEFAULTS['og'], is_end=True)
 
-            # Adjust gravity value towards Final Gravity (FG)
-            gravity_change = (DEFAULTS['og'] - final_gravity) / number_of_changes
-            gravity = max(final_gravity, gravity - gravity_change)
+        print("Simulated fermentation complete. Restarting due to 'nonstop' mode." if total_test_duration is None else "Simulated fermentation complete.")
 
-            # Sleep to maintain accurate time interval
+        # Check if test time has elapsed if it's not `nonstop`
+        if total_test_duration is not None:
             elapsed_time = time.time() - start_time
-            sleep_time = (i + 1) - elapsed_time
-            if sleep_time > 0:
-                time.sleep(sleep_time)
-
-        # Execute the final curl command to ensure the last update is sent
-        execute_curl_command(DEFAULTS['ip'], DEFAULTS['color'], current_temp_fahrenheit, gravity)
-
-        # End of simulation run - use the current (final) values
-        update_log(log_file, timestamp, script_version, current_temp_fahrenheit, DEFAULTS['color'], gravity, start_temp_fahrenheit, DEFAULTS['og'], is_end=True)
-
-    # CLI output at end of simulation
-    print("Simulated fermentation complete. Enjoy a simulated beer on me.")
+            if elapsed_time >= total_test_duration:
+                print("Total test time has been reached. Stopping simulation.")
+                break
+        
+        time.sleep(1)  # Delay before restarting if `nonstop`
+        # Reset start time for the next run in nonstop mode
+        start_time = time.time()
 
     sys.exit(0)
+
 
 if __name__ == "__main__":
     main()

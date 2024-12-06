@@ -1,0 +1,17 @@
+[Unit]
+Description=Simferm Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/simferm --ip 192.168.254.62 --finaltemp 58.7 --starttemp 98.3 --time 720 --color yellow*hd --og 1.0633 --fg 1.012 --testtime nonstop
+Restart=always
+RestartSec=10
+User=pi
+WorkingDirectory=/home/pi/simferm
+StandardOutput=null
+StandardError=null
+
+[Install]
+WantedBy=multi-user.target
+
