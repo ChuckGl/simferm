@@ -42,7 +42,7 @@ With the virtual environment activated, install the required Python packages usi
 
 ### setup.sh
 
-The `setup.sh` script is designed to create a symbolic link in `~/.local/bin` that allows
+The `setup.sh` script is designed to create a executable in `/usr/local/bin` that allows
 you to run `simferm` from anywhere on your system.
 
 #### How to Use the Setup Script
@@ -53,11 +53,14 @@ you to run `simferm` from anywhere on your system.
 
 2. Run the `setup.sh` script:
 
-   ``` ./setup.sh ```
+   ``` sudo ./setup.sh ```
 
-This will create a symbolic link in `~/.local/bin`, allowing you to run `simferm` from any
-directory by simply typing `simferm`.
-
+3. You can modify and use the `simferm.service` file to create a service that runs at startup.
+   ``` vim simferm.service
+   sudo cp simferm.service /etc/systemd/system
+   sudo systemctl enable simferm.service
+   sudo systemctl start simferm.service
+   ```
 ## Running Simferm
 
 Simferm can be run in three ways: with a configuration file, using default settings, or

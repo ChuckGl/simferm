@@ -4,29 +4,28 @@
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 
 # Path to the virtual environment's Python interpreter
-VENV_PYTHON="$SCRIPT_DIR/bin/python3"
+VENV_PYTHON="$SCRIPT_DIR/.venv/bin/python3"
 
-# Check if the virtual environment's Python exists or if $VIRTUAL_ENV is set
-if [ ! -f "$VENV_PYTHON" ] && [ -z "$VIRTUAL_ENV" ]; then
-    echo "Virtual environment not found in $SCRIPT_DIR, and no active virtual environment detected."
+# Check if the virtual environment's Python exists
+if [ ! -f "$VENV_PYTHON" ]; then
+    echo "Virtual environment not found at $VENV_PYTHON."
+    echo "Ensure the virtual environment is set up correctly in $SCRIPT_DIR/.venv."
     exit 1
 fi
 
-# Create the ~/.local/bin directory if it doesn't exist
-mkdir -p ~/.local/bin
-
-# Create a wrapper script in ~/.local/bin that uses the virtual environment's Python
-echo "#!/bin/bash" > ~/.local/bin/simferm
-
-# If $VIRTUAL_ENV is set, use it; otherwise, use $VENV_PYTHON
-if [ -n "$VIRTUAL_ENV" ]; then
-    echo "\"$VIRTUAL_ENV/bin/python3\" \"$SCRIPT_DIR/simferm.py\" \"\$@\"" >> ~/.local/bin/simferm
-else
-    echo "\"$VENV_PYTHON\" \"$SCRIPT_DIR/simferm.py\" \"\$@\"" >> ~/.local/bin/simferm
+# Ensure the script is run with sufficient permissions
+if [ "$(id -u)" -ne 0 ]; then
+    echo "This script must be run as root (e.g., using sudo) to place 'simferm' in /usr/local/bin."
+    exit 1
 fi
 
-# Ensure the simferm script is executable
-chmod +x ~/.local/bin/simferm
+# Create the wrapper script in /usr/local/bin
+WRAPPER_PATH="/usr/local/bin/simferm"
+echo "#!/bin/bash" > "$WRAPPER_PATH"
+echo "\"$VENV_PYTHON\" \"$SCRIPT_DIR/simferm.py\" \"\$@\"" >> "$WRAPPER_PATH"
+
+# Ensure the wrapper script and the original script are executable
+chmod +x "$WRAPPER_PATH"
 chmod +x "$SCRIPT_DIR/simferm.py"
 
 echo "Setup complete. You can now run 'simferm' from anywhere. The log file will be co-located where simferm.py was installed."
